@@ -5,6 +5,7 @@
 
   packages = [ 
     pkgs.python312Packages.textual
+    pkgs.python312Packages.pyserial
   ];
 
   enterShell = ''
