@@ -1,0 +1,37 @@
+Screen {
+    grid-size: 3;
+    background: $background;
+    border: none;
+}
+
+
+#sidebar {
+    width: 1fr;
+    height: 1fr;
+    color: $accent;
+    hatch: left $success 50%;
+}
+
+#body {
+    width: 2fr;
+    height: 1fr;
+    color: $accent;
+    hatch: left $success 50%;
+}
+
+ListItem {
+  border: none;
+}
+
+Log {
+  border: $accent round;
+}
+
+#Header {
+    dock: top;
+    border: none;
+}
+#Footer {
+    dock: bottom;
+    border: none;
+}
