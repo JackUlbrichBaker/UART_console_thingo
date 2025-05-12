@@ -35,7 +35,7 @@ class SelectComPort(ModalScreen):
     def compose(self) -> ComposeResult:
         yield Grid(
             Label("Pick a Com Port to communicate with", id="question"),
-            Select((opt, opt) for opt in list_ports.comports()),
+            Select([(opt, opt) for opt in list_ports.comports(include_links=True)] + [("hard_coded", "/dev/pts/4")]),
             Button("Quit", variant="error", id="quit"),
             Button("Select", variant="primary", id="cancel"),
             id="dialog",
@@ -43,6 +43,8 @@ class SelectComPort(ModalScreen):
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         sel = self.query_one(Select)
+        if event.button.id == "quit":
+            self.exit()
         if sel.selection == None:
             self.app.exit()
         self.dismiss(sel.selection)
@@ -65,12 +67,21 @@ class ConsoleApp(App):
             yield Log(id="body")
         yield Header(show_clock=True, icon="🐟")
         yield Footer()
+        self.motor_driver_controller = None
     
     def add_commands_to_list(self):
         listview = self.query_one(ListView)
         for listitem in listitems:
             listview.append(ListItem(Label(listitem), name=listitem))
     
+    async def print_serial_in(self) -> None:
+        log = self.query_one(Log)
+        ser = self.motor_driver_controller
+        if ser is not None:
+            data_in_buffer = str(ser.ser_controller.read_until())
+            if data_in_buffer != "":
+                log.write_line(data_in_buffer)
+
     async def print_stub(self) -> None:
         log = self.query_one(Log)
         log.write_line(TEXT)
@@ -80,7 +91,7 @@ class ConsoleApp(App):
         self.title = "Motor Driver Console"
         self.sub_title = "useful tool for debugging and controlling my motor driver :)"
         self.add_commands_to_list()
-        self.set_interval(0.1, self.print_stub)
+        self.set_interval(0.1, self.print_serial_in)
         self.push_screen(SelectComPort(), self.check_comm_port_selected)
 
 
@@ -88,6 +99,8 @@ class ConsoleApp(App):
     def send_command(self, event: ListView):
         log = self.query_one(Log)
         log.write_line(f"TEST {event.item.name}, Comm Port: {self.comm_port}")
+        ser = self.motor_driver_controller.ser_controller
+        ser.write(event.item.name.encode("utf-8"))
 
     def check_comm_port_selected(self, comm_port: str):
         self.comm_port = comm_port
