@@ -14,15 +14,67 @@ from textual.screen import ModalScreen
 
 
 TEXT = "Do you want to learn about Textual CSS?"
-listitems = ["one", "two", "three", "four"]
+SPEED_COMMAND_START = [0xAA, 0xCC, 0x0A, 0x00, 0x05]
+SPEED_1000 = SPEED_COMMAND_START + [0xE8, 0x03, 0x00, 0x00]
+
+def crc(data):
+    crc = 0
+    for byte in data:
+        crc ^= byte
+    return crc
+
+def build_start_motor_command():
+    data = bytearray()
+    data.append(0xAA)              # Sync
+    data.append(0xCC)              # Class
+    data += (6).to_bytes(2, 'little')  # Length
+    data.append(0x21)              # Command ID = Start motor
+    data.append(0x00)              # Motor ID
+    crc_append = crc(data[1:])           # Compute CRC
+    data.append(crc_append)
+    return bytes(data)
+start_cmd = build_start_motor_command()
+
+def build_speed_command(speed_rpm: int) -> bytes:
+    # Construct MCP frame to set speed
+    motor_id = 0
+    command_id = 0x05
+    payload = speed_rpm.to_bytes(4, 'little')  # 4 bytes speed
+
+    data = bytearray()
+    data.append(0xAA)                      # Sync byte
+    data.append(0xCC)                      # Class
+    data += (6 + len(payload)).to_bytes(2, 'little')  # Length
+    data.append(command_id)
+    data.append(motor_id)
+    data += payload
+
+    crc_calculated = crc(data[1:])  # Exclude sync byte (0xAA) from CRC
+    data.append(crc_calculated)
+
+    return bytes(data)
+
+def build_get_state_command(motor_id=0x00) -> bytes:
+    data = bytearray()
+    data.append(0xAA)  # Sync
+    data.append(0xCC)  # Class
+    data += (6).to_bytes(2, 'little')  # Length
+    data.append(0x01)  # Command ID: Get Motor State
+    data.append(motor_id)
+    crc_append = crc(data[1:])  # Exclude Sync from CRC
+    data.append(crc_append)
+    return bytes(data)
+SPEED_COMMAND_TEST = build_speed_command(4000)
+
+listitems = ["test", "two", "three", "four"]
 Comm_options = listitems
 
 class motor_driver_controller():
     def __init__(self, comm_port) -> None:
 
         self.timeout = 1
-        self.baud_rate = 19200
-        self.ser_controller = serial.Serial(comm_port, timeout=self.timeout)
+        self.baud_rate = 1843200
+        self.ser_controller = serial.Serial(comm_port, timeout=self.timeout, baudrate=self.baud_rate)
     
     def read_mot(self):
         return self.ser_controller.read(100)
@@ -35,7 +87,7 @@ class SelectComPort(ModalScreen):
     def compose(self) -> ComposeResult:
         yield Grid(
             Label("Pick a Com Port to communicate with", id="question"),
-            Select([(opt, opt) for opt in list_ports.comports(include_links=True)] + [("hard_coded", "/dev/pts/4")]),
+            Select([(opt.product, opt.device) for opt in list_ports.comports(include_links=True)] + [("hard_coded", "/dev/pts/4")], allow_blank=False),
             Button("Quit", variant="error", id="quit"),
             Button("Select", variant="primary", id="cancel"),
             id="dialog",
@@ -87,7 +139,7 @@ class ConsoleApp(App):
         log.write_line(TEXT)
 
     async def on_mount(self) -> None:
-        self.theme = "tokyo-night"
+        self.theme = "gruvbox"
         self.title = "Motor Driver Console"
         self.sub_title = "useful tool for debugging and controlling my motor driver :)"
         self.add_commands_to_list()
@@ -100,7 +152,8 @@ class ConsoleApp(App):
         log = self.query_one(Log)
         log.write_line(f"TEST {event.item.name}, Comm Port: {self.comm_port}")
         ser = self.motor_driver_controller.ser_controller
-        ser.write(event.item.name.encode("utf-8"))
+        ser.write(start_cmd)
+        ser.write(SPEED_COMMAND_TEST)
 
     def check_comm_port_selected(self, comm_port: str):
         self.comm_port = comm_port
